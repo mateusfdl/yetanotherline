@@ -1,25 +1,25 @@
 local M = {}
 
-local bg = "#cccccd"
-local fg = "#2E3440"
+local fg = "#cccccd"
+local bg = "#2E3440"
 vim.api.nvim_command("highlight! YetAnotherLine guibg=" .. bg .. " guifg=" .. fg)
 
 local hl_colors = {
-	YASNorMode = { bg = bg, fg = "#fb4934" },
-	YASInsertMode = { bg = bg, fg = "#268bd2" },
-	YASVisualMode = { bg = bg, fg = "#50a14f" },
-	YASReplaceMode = { bg = bg, fg = "#a48ec7" },
-	YASCmdMode = { bg = bg, fg = "#FF6A00" },
+	YASNorMode = { bg = bg, fg = "#ec5f67" },
+	YASInsertMode = { bg = bg, fg = "#98be65" },
+	YASVisualMode = { bg = bg, fg = "#51afef" },
+	YASReplaceMode = { bg = bg, fg = "#c678dd" },
+	YASCmdMode = { bg = bg, fg = "#FF8800" },
 	YASOtherMode = { bg = bg, fg = "#83a598" },
-	YASGitAdded = { bg = bg, fg = "#50a14f" },
-	YASGitChanged = { bg = bg, fg = "#FF6A00" },
-	YASGitRemoved = { bg = bg, fg = "#fb4934" },
-	YASGitBranch = { bg = bg, fg = "#a48ec7" },
-	YASLspStatus = { bg = bg, fg = "#fb4934" },
-	YASLspError = { bg = bg, fg = "#fb4934" },
-	YASLspWarning = { bg = bg, fg = "#FF6A00" },
-	YASLspHints = { bg = bg, fg = "#a48ec7" },
-	YASLspInfo = { bg = bg, fg = "#268bd2" },
+	YASGitAdded = { bg = bg, fg = "#98be65" },
+	YASGitChanged = { bg = bg, fg = "#FF8800" },
+	YASGitRemoved = { bg = bg, fg = "#ec5f67" },
+	YASGitBranch = { bg = bg, fg = "#a9a1e1" },
+	YASLspStatus = { bg = bg, fg = "#ec5f67" },
+	YASLspError = { bg = bg, fg = "#ec5f67" },
+	YASLspWarning = { bg = bg, fg = "#FF8800" },
+	YASLspHints = { bg = bg, fg = "#a9a1e1" },
+	YASLspInfo = { bg = bg, fg = "#51afef" },
 }
 local setup_hl = function()
 	for hl_group, colors in pairs(hl_colors) do
@@ -71,7 +71,7 @@ M.mode = function()
 		hl = mode_hl["Unknown"]
 	end
 
-	return "%#" .. hl .. "#" .. " "
+	return { sl = "%#" .. hl .. "#" .. " ", events = { "ModeChanged" } }
 end
 
 M.file = function()
@@ -85,30 +85,39 @@ M.file = function()
 		vim.api.nvim_command("highlight! YASFileIcon guifg=" .. color .. " guibg=" .. bg .. " gui=bold")
 	end
 
-	return "%#YASFileIcon#" .. icon .. " " .. file_name
+	return { sl = "%#YASFileIcon#" .. icon .. " " .. file_name, events = { "BufEnter", "BufWritePost" } }
 end
 
 M.git_info = function()
 	local ok, dict = pcall(vim.api.nvim_buf_get_var, 0, "gitsigns_status_dict")
 	if not ok then
-		return ""
+		return {
+			sl = "",
+			events = { "BufEnter", "BufWritePost", "BufWinEnter", "GitSignsPostBufRead" },
+		}
 	end
 
 	local added = (dict.added and dict.added ~= 0) and (" %#YASGitAdded# " .. dict.added) or ""
 	local changed = (dict.changed and dict.changed ~= 0) and (" %#YASGitChanged# " .. dict.changed) or ""
 	local removed = (dict.removed and dict.removed ~= 0) and (" %#YASGitRemoved# " .. dict.removed) or ""
 
-	return "    %#YASGitBranch#  -> " .. added .. changed .. removed
+	return {
+		sl = "    %#YASGitBranch#  -> " .. added .. changed .. removed,
+		events = { "BufEnter", "BufWritePost", "BufWinEnter", "GitSignsPostBufRead" },
+	}
 end
 
 M.lsp_server = function()
 	for _, client in ipairs(vim.lsp.get_active_clients()) do
 		if client.attached_buffers[vim.api.nvim_get_current_buf()] then
-			return (vim.o.columns > 70 and "%#YASLspStatus#" .. "  " .. client.name .. " ") or "   LSP "
+			return {
+				sl = (vim.o.columns > 70 and "%#YASLspStatus#" .. "  " .. client.name .. " ") or "   LSP ",
+				event = "BufEnter",
+			}
 		end
 	end
 
-	return ""
+	return { sl = "", events = { "BufEnter" } }
 end
 
 M.lsp_diagnostics = function()
@@ -122,22 +131,24 @@ M.lsp_diagnostics = function()
 	hints = (hints and hints > 0) and ("%#YASLspHints#" .. "ﯧ " .. hints .. " ") or ""
 	info = (info and info > 0) and ("%#YASLspInfo#" .. " " .. info .. " ") or ""
 
-	return errors .. warnings .. hints .. info
+	return { sl = errors .. warnings .. hints .. info, events = { "BufEnter", "BufWritePost" } }
 end
 
 local iter_line = vim.loop.new_async(vim.schedule_wrap(function()
-	local mod = require("yetanotherline")
+	local modules = require("yetanotherline")
+
 	local statusline = ""
-	statusline = table.concat({
-		mod.mode(),
-		mod.file(),
+	for _, module in ipairs({
+		modules.mode().sl,
+		modules.file().sl,
 		"%=",
-		mod.git_info(),
+		modules.git_info().sl,
 		"%=",
-		mod.lsp_diagnostics(),
-		"%=",
-		mod.lsp_server(),
-	})
+		modules.lsp_diagnostics().sl,
+		modules.lsp_server().sl,
+	}) do
+		statusline = statusline .. module
+	end
 	setup_hl()
 
 	vim.wo.statusline = statusline
