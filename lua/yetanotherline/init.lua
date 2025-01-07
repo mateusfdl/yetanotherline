@@ -1,24 +1,27 @@
 local M = {}
 
-local fg = "#cccccd"
-local bg = "#2E3440"
+vim.api.nvim_command("highlight! YetAnotherLine guibg=#2E3440 guifg=#2E3440")
+local to_hex = function(color)
+	return string.format("#%06x", color)
+end
+local sl_bg = to_hex(vim.api.nvim_get_hl_by_name("YetAnotherLine", true).background)
 
 local hl_colors = {
-	YASNorMode = { bg = bg, fg = "#ec5f67" },
-	YASInsertMode = { bg = bg, fg = "#98be65" },
-	YASVisualMode = { bg = bg, fg = "#51afef" },
-	YASReplaceMode = { bg = bg, fg = "#c678dd" },
-	YASCmdMode = { bg = bg, fg = "#FF8800" },
-	YASOtherMode = { bg = bg, fg = "#83a598" },
-	YASGitAdded = { bg = bg, fg = "#98be65" },
-	YASGitChanged = { bg = bg, fg = "#FF8800" },
-	YASGitRemoved = { bg = bg, fg = "#ec5f67" },
-	YASGitBranch = { bg = bg, fg = "#a9a1e1" },
-	YASLspStatus = { bg = bg, fg = "#ec5f67" },
-	YASLspError = { bg = bg, fg = "#ec5f67" },
-	YASLspWarnings = { bg = bg, fg = "#FF8800" },
-	YASLspHints = { bg = bg, fg = "#a9a1e1" },
-	YASLspInfo = { bg = bg, fg = "#51afef" },
+	YASNorMode = { bg = sl_bg, fg = "#ec5f67" },
+	YASInsertMode = { bg = sl_bg, fg = "#98be65" },
+	YASVisualMode = { bg = sl_bg, fg = "#51afef" },
+	YASReplaceMode = { bg = sl_bg, fg = "#c678dd" },
+	YASCmdMode = { bg = sl_bg, fg = "#FF8800" },
+	YASOtherMode = { bg = sl_bg, fg = "#83a598" },
+	YASGitAdded = { bg = sl_bg, fg = "#98be65" },
+	YASGitChanged = { bg = sl_bg, fg = "#FF8800" },
+	YASGitRemoved = { bg = sl_bg, fg = "#ec5f67" },
+	YASGitBranch = { bg = sl_bg, fg = "#a9a1e1" },
+	YASLspStatus = { bg = sl_bg, fg = "#ec5f67" },
+	YASLspError = { bg = sl_bg, fg = "#ec5f67" },
+	YASLspWarning = { bg = sl_bg, fg = "#FF8800" },
+	YASLspHints = { bg = sl_bg, fg = "#a9a1e1" },
+	YASLspInfo = { bg = sl_bg, fg = "#51afef" },
 }
 
 local function setup_highlights()
