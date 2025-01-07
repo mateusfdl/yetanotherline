@@ -1,10 +1,10 @@
 local M = {}
 
-vim.api.nvim_command("highlight! YetAnotherLine guibg=#2E3440 guifg=#2E3440")
+vim.api.nvim_command("highlight! YetAnotherLineBackground guibg=#2E3440 guifg=#2E3440")
 local to_hex = function(color)
 	return string.format("#%06x", color)
 end
-local sl_bg = to_hex(vim.api.nvim_get_hl_by_name("YetAnotherLine", true).background)
+local sl_bg = to_hex(vim.api.nvim_get_hl_by_name("YetAnotherLineBackground", true).background)
 
 local hl_colors = {
 	YASNorMode = { bg = sl_bg, fg = "#ec5f67" },
@@ -67,12 +67,13 @@ M.file = function()
 	end
 
 	local icon, color = devicons.get_icon_color(file_name, file_extension, { default = true })
-	if color then
-		vim.api.nvim_set_hl(0, "YASFileIcon", { fg = color, bg = sl_bg, bold = true })
-	end
+	local hl_group = "YASFileIcon" .. file_extension
+	local bg_color = vim.api.nvim_get_hl_by_name("YetAnotherLineBackground", true).background
+
+	vim.api.nvim_set_hl(0, hl_group, { fg = color, bg = bg_color, bold = true })
 
 	return {
-		sl = "%#YASFileIcon#" .. icon .. " " .. file_name,
+		sl = "%#" .. hl_group .. "#" .. icon .. " " .. file_name,
 		events = { "BufEnter", "BufWritePost" },
 	}
 end
@@ -125,7 +126,7 @@ M.lsp_diagnostics = function()
 	}
 end
 
-local function build_statusline()
+M.build_statusline = function()
 	local modules = {
 		M.mode(),
 		M.file(),
@@ -149,7 +150,6 @@ local function build_statusline()
 end
 
 M.update_statusline = function()
-	vim.wo.statusline = build_statusline()
 end
 
 M.setup = function()
