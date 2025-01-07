@@ -19,7 +19,7 @@ local hl_colors = {
 	YASGitBranch = { bg = sl_bg, fg = "#a9a1e1" },
 	YASLspStatus = { bg = sl_bg, fg = "#ec5f67" },
 	YASLspError = { bg = sl_bg, fg = "#ec5f67" },
-	YASLspWarning = { bg = sl_bg, fg = "#FF8800" },
+	YASLspWarnings = { bg = sl_bg, fg = "#FF8800" },
 	YASLspHints = { bg = sl_bg, fg = "#a9a1e1" },
 	YASLspInfo = { bg = sl_bg, fg = "#51afef" },
 }
@@ -54,7 +54,7 @@ M.mode = function()
 	local mode = vim.api.nvim_get_mode().mode
 	local hl = mode_hl[mode] or mode_hl.Unknown
 	return {
-		sl = "%#" .. hl .. "#",
+		sl = "%#" .. hl .. "# ",
 		events = { "ModeChanged" },
 	}
 end
@@ -68,7 +68,7 @@ M.file = function()
 
 	local icon, color = devicons.get_icon_color(file_name, file_extension, { default = true })
 	if color then
-		vim.api.nvim_set_hl(0, "YASFileIcon", { fg = color, bg = bg, bold = true })
+		vim.api.nvim_set_hl(0, "YASFileIcon", { fg = color, bg = sl_bg, bold = true })
 	end
 
 	return {
@@ -88,7 +88,7 @@ M.git_info = function()
 	local removed = dict.removed and dict.removed > 0 and ("%#YASGitRemoved# " .. dict.removed .. " ") or ""
 
 	return {
-		sl = "%#YASGitBranch# " .. (dict.head or "") .. added .. changed .. removed,
+		sl = "%#YASGitBranch# -> " .. (dict.head .. " " or "") .. added .. changed .. removed,
 		events = { "BufEnter", "BufWritePost", "BufWinEnter" },
 	}
 end
@@ -149,30 +149,25 @@ local function build_statusline()
 end
 
 M.update_statusline = function()
-	setup_highlights()
 	vim.wo.statusline = build_statusline()
 end
 
 M.setup = function()
+	setup_highlights()
 	vim.api.nvim_create_augroup("YetAnotherLine", { clear = true })
-	vim.loop
-		.new_async(vim.schedule_wrap(function()
-			for name, module in pairs(M) do
-				if type(module) == "function" and name ~= "setup" and name ~= "update_statusline" then
-					local mod_events = module().events
-					if mod_events then
-						for _, event in ipairs(mod_events) do
-							vim.api.nvim_create_autocmd(event, {
-								group = "YetAnotherLine",
-								callback = M.update_statusline,
-							})
-						end
-					end
+	for name, module in pairs(M) do
+		if type(module) == "function" and name ~= "setup" and name ~= "update_statusline" then
+			local mod_events = module().events
+			if mod_events then
+				for _, event in ipairs(mod_events) do
+					vim.api.nvim_create_autocmd(event, {
+						group = "YetAnotherLine",
+						callback = M.update_statusline,
+					})
 				end
 			end
-			M.update_statusline()
-		end))
-		:send()
+		end
+	end
 end
 
 return M
