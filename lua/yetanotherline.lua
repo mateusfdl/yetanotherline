@@ -108,7 +108,7 @@ end
 
 M.lsp_diagnostics = function()
 	local diagnostics = {
-		errors = #vim.diagnostic.get(0, { severity = vim.diagnostic.severity.ERROR }),
+		error = #vim.diagnostic.get(0, { severity = vim.diagnostic.severity.ERROR }),
 		warnings = #vim.diagnostic.get(0, { severity = vim.diagnostic.severity.WARN }),
 		hints = #vim.diagnostic.get(0, { severity = vim.diagnostic.severity.HINT }),
 		info = #vim.diagnostic.get(0, { severity = vim.diagnostic.severity.INFO }),
@@ -121,20 +121,33 @@ M.lsp_diagnostics = function()
 	end
 
 	return {
-		sl = fmt("errors", "") .. fmt("warnings", "") .. fmt("hints", "ﯧ") .. fmt("info", ""),
+		sl = fmt("error", "") .. fmt("warnings", "") .. fmt("hints", "") .. fmt("info", ""),
 		events = { "BufEnter", "BufWritePost", "DiagnosticChanged" },
 	}
+end
+
+M.empty_space = function(length)
+	local spaces = ""
+	local i = 0
+
+	while i < (length or 0) do
+		spaces = spaces .. "%="
+		i = i + 1
+	end
+
+	return spaces
 end
 
 M.build_statusline = function()
 	local modules = {
 		M.mode(),
 		M.file(),
-		"%=",
+		M.empty_space(1),
 		M.git_info(),
-		"%=",
+		M.empty_space(20),
 		M.lsp_diagnostics(),
 		M.lsp_server(),
+		" ",
 	}
 
 	local statusline = ""
