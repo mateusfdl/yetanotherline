@@ -36,151 +36,117 @@ local mode_hl = {
 	i = "YASInsertMode",
 	v = "YASVisualMode",
 	V = "YASVisualMode",
-	["\\22"] = "YASVisualMode",
+	["\22"] = "YASVisualMode",
 	R = "YASReplaceMode",
 	c = "YASCmdMode",
 	s = "YASOtherMode",
 	S = "YASOtherMode",
-	["\\19"] = "YASOtherMode",
+	["\19"] = "YASOtherMode",
 	t = "YASOtherMode",
 	Unknown = "YASOtherMode",
 }
 
-local function get_file_info()
-	return vim.fn.expand("%:t"), vim.fn.expand("%:e")
+-- Reintroduce empty_space
+M.empty_space = function(length)
+	local spaces = ""
+	local i = 0
+	while i < (length or 0) do
+		spaces = spaces .. "%="
+		i = i + 1
+	end
+	return spaces
 end
 
-M.mode = function()
+-- Build the statusline with separators
+M.build_statusline = function()
 	local mode = vim.api.nvim_get_mode().mode
 	local hl = mode_hl[mode] or mode_hl.Unknown
-	return {
-		sl = "%#" .. hl .. "# ",
-		events = { "ModeChanged" },
-	}
-end
-
-M.file = function()
-	local file_name, file_extension = get_file_info()
+	local file_name, file_ext = vim.fn.expand("%:t"), vim.fn.expand("%:e")
+	local icon = ""
 	local ok, devicons = pcall(require, "nvim-web-devicons")
-	if not ok then
-		return ""
+	if ok then
+		icon, color = devicons.get_icon_color(file_name, file_extension, { default = true })
+		local hl_group = "YASFileIcon" .. file_ext
+		vim.api.nvim_set_hl(0, hl_group, { fg = color, bg = bg_color, bold = true })
+
+		icon = "%#" .. hl_group .. "#" .. icon
 	end
-
-	local icon, color = devicons.get_icon_color(file_name, file_extension, { default = true })
-	local hl_group = "YASFileIcon" .. file_extension
-	local bg_color = vim.api.nvim_get_hl_by_name("YetAnotherLineBackground", true).background
-
-	vim.api.nvim_set_hl(0, hl_group, { fg = color, bg = bg_color, bold = true })
-
-	return {
-		sl = "%#" .. hl_group .. "#" .. icon .. " " .. file_name,
-		events = { "BufEnter", "BufWritePost" },
-	}
-end
-
-M.git_info = function()
-	local ok, dict = pcall(vim.api.nvim_buf_get_var, 0, "gitsigns_status_dict")
-	if not ok then
-		return { sl = "", events = { "BufEnter", "BufWritePost", "BufWinEnter" } }
+	local git = ""
+	local ok_git, dict = pcall(vim.api.nvim_buf_get_var, 0, "gitsigns_status_dict")
+	if ok_git then
+		local added = dict.added and dict.added > 0 and ("%#YASGitAdded# " .. dict.added .. " ") or ""
+		local changed = dict.changed and dict.changed > 0 and ("%#YASGitChanged# " .. dict.changed .. " ") or ""
+		local removed = dict.removed and dict.removed > 0 and ("%#YASGitRemoved# " .. dict.removed .. " ") or ""
+		git = "%#YASGitBranch# " .. (dict.head or "") .. " " .. added .. changed .. removed
 	end
-
-	local added = dict.added and dict.added > 0 and ("%#YASGitAdded# " .. dict.added .. " ") or ""
-	local changed = dict.changed and dict.changed > 0 and ("%#YASGitChanged# " .. dict.changed .. " ") or ""
-	local removed = dict.removed and dict.removed > 0 and ("%#YASGitRemoved# " .. dict.removed .. " ") or ""
-
-	return {
-		sl = "%#YASGitBranch# -> " .. (dict.head .. " " or "") .. added .. changed .. removed,
-		events = { "BufEnter", "BufWritePost", "BufWinEnter" },
-	}
-end
-
-M.lsp_server = function()
+	local lsp = ""
 	for _, client in ipairs(vim.lsp.get_active_clients()) do
 		if client.attached_buffers[vim.api.nvim_get_current_buf()] then
-			return {
-				sl = "%#YASLspStatus#  " .. client.name,
-				events = { "BufEnter" },
-			}
+			lsp = "%#YASLspStatus#  " .. client.name
+			break
 		end
 	end
-	return { sl = "", events = { "BufEnter" } }
-end
-
-M.lsp_diagnostics = function()
+	local diags = ""
 	local diagnostics = {
 		error = #vim.diagnostic.get(0, { severity = vim.diagnostic.severity.ERROR }),
 		warnings = #vim.diagnostic.get(0, { severity = vim.diagnostic.severity.WARN }),
 		hints = #vim.diagnostic.get(0, { severity = vim.diagnostic.severity.HINT }),
 		info = #vim.diagnostic.get(0, { severity = vim.diagnostic.severity.INFO }),
 	}
-
-	local fmt = function(severity, icon)
-		return diagnostics[severity] > 0
-				and ("%#YASLsp" .. severity:sub(1, 1):upper() .. severity:sub(2) .. "#" .. icon .. " " .. diagnostics[severity] .. " ")
-			or ""
+	if diagnostics.error > 0 then
+		diags = diags .. "%#YASLspError# " .. diagnostics.error .. " "
+	end
+	if diagnostics.warnings > 0 then
+		diags = diags .. "%#YASLspWarnings# " .. diagnostics.warnings .. " "
+	end
+	if diagnostics.hints > 0 then
+		diags = diags .. "%#YASLspHints# " .. diagnostics.hints .. " "
+	end
+	if diagnostics.info > 0 then
+		diags = diags .. "%#YASLspInfo# " .. diagnostics.info .. " "
 	end
 
-	return {
-		sl = fmt("error", "") .. fmt("warnings", "") .. fmt("hints", "") .. fmt("info", ""),
-		events = { "BufEnter", "BufWritePost", "DiagnosticChanged" },
-	}
+	return "%#"
+		.. hl
+		.. "# "
+		.. icon
+		.. " "
+		.. file_name
+		.. " "
+		.. M.empty_space(1)
+		.. git
+		.. M.empty_space(20)
+		.. diags
+		.. lsp
+		.. " %l:%c "
 end
 
-M.empty_space = function(length)
-	local spaces = ""
-	local i = 0
-
-	while i < (length or 0) do
-		spaces = spaces .. "%="
-		i = i + 1
-	end
-
-	return spaces
-end
-
-M.build_statusline = function()
-	local modules = {
-		M.mode(),
-		M.file(),
-		M.empty_space(1),
-		M.git_info(),
-		M.empty_space(20),
-		M.lsp_diagnostics(),
-		M.lsp_server(),
-		" ",
-	}
-
-	local statusline = ""
-	for _, module in ipairs(modules) do
-		if type(module) == "string" then
-			statusline = statusline .. module
-		elseif type(module) == "table" and module.sl then
-			statusline = statusline .. module.sl
-		end
-	end
-
-	return statusline
-end
-
-M.update_statusline = function()
-	vim.wo.statusline = "%!v:lua.require('yetanotherline').build_statusline()"
+local function update_statusline()
+	vim.o.laststatus = 3
+	vim.o.statusline = "%!v:lua.require('yetanotherline').build_statusline()"
+	-- for _, win in ipairs(vim.api.nvim_list_wins()) do
+	-- 	vim.api.nvim_win_set_option(win, "statusline", "")
+	-- end
 end
 
 M.setup = function()
 	setup_highlights()
-	vim.api.nvim_create_augroup("YetAnotherLine", { clear = true })
-	for name, module in pairs(M) do
-		if type(module) == "function" and name ~= "setup" and name ~= "update_statusline" then
-			local mod_events = module().events
-			if mod_events then
-				for _, event in ipairs(mod_events) do
-					vim.api.nvim_create_autocmd(event, {
-						group = "YetAnotherLine",
-						callback = M.update_statusline,
-					})
-				end
-			end
-		end
+	update_statusline()
+
+	vim.api.nvim_create_autocmd({ "WinNew", "WinEnter", "BufWinEnter" }, {
+		group = vim.api.nvim_create_augroup("YetAnotherLine", { clear = true }),
+		callback = function()
+			vim.wo.statusline = ""
+			vim.o.laststatus = 3
+		end,
+	})
+
+	local events = { "ModeChanged", "BufEnter", "WinEnter", "BufWritePost", "DiagnosticChanged" }
+	for _, event in ipairs(events) do
+		vim.api.nvim_create_autocmd(event, {
+			group = "YetAnotherLine",
+			callback = update_statusline,
+		})
 	end
 end
 
