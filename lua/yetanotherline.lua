@@ -57,7 +57,6 @@ M.empty_space = function(length)
 	return spaces
 end
 
--- Build the statusline with separators
 M.build_statusline = function()
 	local mode = vim.api.nvim_get_mode().mode
 	local hl = mode_hl[mode] or mode_hl.Unknown
@@ -80,7 +79,8 @@ M.build_statusline = function()
 		git = "%#YASGitBranch# " .. (dict.head or "") .. " " .. added .. changed .. removed
 	end
 	local lsp = ""
-	for _, client in ipairs(vim.lsp.get_active_clients()) do
+	local lsp_clients = vim.lsp.get_active_clients()
+	for _, client in ipairs(lsp_clients[#lsp_clients]) do
 		if client.attached_buffers[vim.api.nvim_get_current_buf()] then
 			lsp = "%#YASLspStatus#  " .. client.name
 			break
@@ -124,9 +124,6 @@ end
 local function update_statusline()
 	vim.o.laststatus = 3
 	vim.o.statusline = "%!v:lua.require('yetanotherline').build_statusline()"
-	-- for _, win in ipairs(vim.api.nvim_list_wins()) do
-	-- 	vim.api.nvim_win_set_option(win, "statusline", "")
-	-- end
 end
 
 M.setup = function()
