@@ -79,11 +79,12 @@ M.build_statusline = function()
 		git = "%#YASGitBranch# " .. (dict.head or "") .. " " .. added .. changed .. removed
 	end
 	local lsp = ""
-	local lsp_clients = vim.lsp.get_active_clients()
-	for _, client in ipairs(lsp_clients[#lsp_clients]) do
+	for _, client in ipairs(vim.lsp.get_active_clients()) do
 		if client.attached_buffers[vim.api.nvim_get_current_buf()] then
-			lsp = "%#YASLspStatus#  " .. client.name
-			break
+			if client.name ~= "copilot" then
+				lsp = "%#YASLspStatus#  " .. client.name
+				break
+			end
 		end
 	end
 	local diags = ""
