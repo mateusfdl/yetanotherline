@@ -69,10 +69,11 @@ local function get_statusline_background()
 	end
 end
 
-local function set_highlight(group, foreground, bold)
+local function set_highlight(group, foreground, bold, default)
 	vim.api.nvim_set_hl(0, group, {
 		bg = statusline_background,
 		bold = bold,
+		default = default,
 		fg = foreground,
 	})
 end
@@ -81,10 +82,10 @@ local function refresh_highlights()
 	statusline_background = get_statusline_background()
 
 	for group, foreground in pairs(HIGHLIGHTS) do
-		set_highlight(group, foreground, false)
+		set_highlight(group, foreground, false, true)
 	end
 	for group, foreground in pairs(icon_highlights) do
-		set_highlight(group, foreground, true)
+		set_highlight(group, foreground, true, false)
 	end
 end
 
@@ -137,7 +138,7 @@ local function get_file_icon(file_name, extension)
 	local group = "YASFileIcon" .. extension
 	if icon_highlights[group] ~= color then
 		icon_highlights[group] = color
-		set_highlight(group, color, true)
+		set_highlight(group, color, true, false)
 	end
 
 	return "%#" .. group .. "#" .. icon .. " "
