@@ -1,192 +1,263 @@
 local M = {}
 
-local augroup_name = "YetAnotherLine"
-local augroup_id = nil
-local icon_hl_cache = {}
-local sl_bg = nil
+local ALIGN_GIT = "%="
+local ALIGN_RIGHT = string.rep("%=", 20)
+local AUGROUP_NAME = "YetAnotherLine"
+local STATUSLINE = "%!v:lua.require('yetanotherline').build_statusline()"
 
-local to_hex = function(color)
+local HIGHLIGHTS = {
+	YASCmdMode = "#FF8800",
+	YASGitAdded = "#98be65",
+	YASGitBranch = "#a9a1e1",
+	YASGitChanged = "#FF8800",
+	YASGitRemoved = "#ec5f67",
+	YASInsertMode = "#98be65",
+	YASLspError = "#ec5f67",
+	YASLspHints = "#a9a1e1",
+	YASLspInfo = "#51afef",
+	YASLspStatus = "#ec5f67",
+	YASLspWarnings = "#FF8800",
+	YASNorMode = "#ec5f67",
+	YASOtherMode = "#83a598",
+	YASReplaceMode = "#c678dd",
+	YASVisualMode = "#51afef",
+}
+
+local MODE_HIGHLIGHTS = {
+	["\19"] = "YASOtherMode",
+	["\22"] = "YASVisualMode",
+	R = "YASReplaceMode",
+	S = "YASOtherMode",
+	V = "YASVisualMode",
+	c = "YASCmdMode",
+	i = "YASInsertMode",
+	n = "YASNorMode",
+	no = "YASNorMode",
+	s = "YASOtherMode",
+	t = "YASOtherMode",
+	v = "YASVisualMode",
+}
+
+local DIAGNOSTICS = {
+	{ vim.diagnostic.severity.ERROR, "YASLspError", "" },
+	{ vim.diagnostic.severity.WARN, "YASLspWarnings", "" },
+	{ vim.diagnostic.severity.HINT, "YASLspHints", "" },
+	{ vim.diagnostic.severity.INFO, "YASLspInfo", "" },
+}
+
+local augroup_id
+local devicons
+local enabled = false
+local icon_highlights = {}
+local previous_laststatus
+local previous_statusline
+local statusline_background
+
+local function to_hex(color)
 	return string.format("#%06x", color)
 end
 
-local function get_statusline_bg()
-	local hl = vim.api.nvim_get_hl(0, { name = "StatusLine", link = false })
-	if hl.bg then
-		return to_hex(hl.bg)
+local function get_statusline_background()
+	local normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false })
+	local statusline = vim.api.nvim_get_hl(0, { name = "StatusLine", link = false })
+	local background = statusline.bg or normal.bg
+	if statusline.reverse then
+		background = statusline.fg or normal.fg
 	end
-	return "#2E3440"
-end
-
-local function build_hl_colors(bg)
-	return {
-		YASNorMode = { bg = bg, fg = "#ec5f67" },
-		YASInsertMode = { bg = bg, fg = "#98be65" },
-		YASVisualMode = { bg = bg, fg = "#51afef" },
-		YASReplaceMode = { bg = bg, fg = "#c678dd" },
-		YASCmdMode = { bg = bg, fg = "#FF8800" },
-		YASOtherMode = { bg = bg, fg = "#83a598" },
-		YASGitAdded = { bg = bg, fg = "#98be65" },
-		YASGitChanged = { bg = bg, fg = "#FF8800" },
-		YASGitRemoved = { bg = bg, fg = "#ec5f67" },
-		YASGitBranch = { bg = bg, fg = "#a9a1e1" },
-		YASLspStatus = { bg = bg, fg = "#ec5f67" },
-		YASLspError = { bg = bg, fg = "#ec5f67" },
-		YASLspWarnings = { bg = bg, fg = "#FF8800" },
-		YASLspHints = { bg = bg, fg = "#a9a1e1" },
-		YASLspInfo = { bg = bg, fg = "#51afef" },
-	}
-end
-
-local function setup_highlights()
-	sl_bg = get_statusline_bg()
-
-	local hl_colors = build_hl_colors(sl_bg)
-	for group, colors in pairs(hl_colors) do
-		vim.api.nvim_set_hl(0, group, { fg = colors.fg, bg = colors.bg })
-	end
-
-	for group, color in pairs(icon_hl_cache) do
-		vim.api.nvim_set_hl(0, group, { fg = color, bg = sl_bg, bold = true })
+	if background then
+		return to_hex(background)
 	end
 end
 
-local mode_hl = {
-	no = "YASNorMode",
-	n = "YASNorMode",
-	i = "YASInsertMode",
-	v = "YASVisualMode",
-	V = "YASVisualMode",
-	["\22"] = "YASVisualMode",
-	R = "YASReplaceMode",
-	c = "YASCmdMode",
-	s = "YASOtherMode",
-	S = "YASOtherMode",
-	["\19"] = "YASOtherMode",
-	t = "YASOtherMode",
-	Unknown = "YASOtherMode",
-}
+local function set_highlight(group, foreground, bold)
+	vim.api.nvim_set_hl(0, group, {
+		bg = statusline_background,
+		bold = bold,
+		fg = foreground,
+	})
+end
 
-local severity = vim.diagnostic.severity
+local function refresh_highlights()
+	statusline_background = get_statusline_background()
 
-local function empty_space(length)
-	return string.rep("%=", length or 0)
+	for group, foreground in pairs(HIGHLIGHTS) do
+		set_highlight(group, foreground, false)
+	end
+	for group, foreground in pairs(icon_highlights) do
+		set_highlight(group, foreground, true)
+	end
+end
+
+local function schedule_highlight_refresh()
+	vim.schedule(function()
+		if not enabled then
+			return
+		end
+		refresh_highlights()
+		vim.cmd.redrawstatus()
+	end)
+end
+
+local function escape_statusline(value)
+	return value:gsub("%%", "%%%%")
+end
+
+local function get_file_info()
+	local file_name = vim.fs.basename(vim.api.nvim_buf_get_name(0))
+	local extension = file_name:match("^.+%.([^.]+)$")
+	if not extension then
+		extension = ""
+	end
+	return file_name, extension
+end
+
+local function load_devicons()
+	if devicons then
+		return devicons
+	end
+
+	local ok, module = pcall(require, "nvim-web-devicons")
+	if ok then
+		devicons = module
+	end
+	return devicons
+end
+
+local function get_file_icon(file_name, extension)
+	local icons = load_devicons()
+	if not icons then
+		return ""
+	end
+
+	local icon, color = icons.get_icon_color(file_name, extension, { default = true })
+	if not icon or not color then
+		return ""
+	end
+
+	local group = "YASFileIcon" .. extension
+	if icon_highlights[group] ~= color then
+		icon_highlights[group] = color
+		set_highlight(group, color, true)
+	end
+
+	return "%#" .. group .. "#" .. icon .. " "
+end
+
+local function append_git(parts)
+	local git = vim.b.gitsigns_status_dict
+	if not git then
+		return
+	end
+
+	local head = git.head
+	if not head then
+		head = ""
+	end
+	parts[#parts + 1] = "%#YASGitBranch# " .. escape_statusline(head) .. " "
+
+	if git.added and git.added > 0 then
+		parts[#parts + 1] = "%#YASGitAdded# " .. tostring(git.added) .. " "
+	end
+	if git.changed and git.changed > 0 then
+		parts[#parts + 1] = "%#YASGitChanged# " .. tostring(git.changed) .. " "
+	end
+	if git.removed and git.removed > 0 then
+		parts[#parts + 1] = "%#YASGitRemoved# " .. tostring(git.removed) .. " "
+	end
+end
+
+local function append_diagnostics(parts)
+	local counts = vim.diagnostic.count(0)
+	for _, diagnostic in ipairs(DIAGNOSTICS) do
+		local count = counts[diagnostic[1]]
+		if count and count > 0 then
+			parts[#parts + 1] = "%#" .. diagnostic[2] .. "#" .. diagnostic[3] .. " " .. tostring(count) .. " "
+		end
+	end
+end
+
+local function append_lsp(parts)
+	for _, client in ipairs(vim.lsp.get_clients({ bufnr = 0 })) do
+		if client.name ~= "copilot" then
+			parts[#parts + 1] = "%#YASLspStatus#  " .. escape_statusline(client.name)
+			return
+		end
+	end
+end
+
+local function redraw_statusline()
+	vim.cmd.redrawstatus()
 end
 
 M.build_statusline = function()
-	local mode = vim.api.nvim_get_mode().mode
-	local hl = mode_hl[mode] or mode_hl.Unknown
-	local file_name = vim.fn.expand("%:t")
-	local file_ext = vim.fn.expand("%:e")
-
-	local icon = ""
-	local ok, devicons = pcall(require, "nvim-web-devicons")
-	if ok then
-		local ic, color = devicons.get_icon_color(file_name, file_ext, { default = true })
-		local hl_group = "YASFileIcon" .. file_ext
-
-		if icon_hl_cache[hl_group] ~= color then
-			vim.api.nvim_set_hl(0, hl_group, { fg = color, bg = sl_bg, bold = true })
-			icon_hl_cache[hl_group] = color
-		end
-
-		icon = "%#" .. hl_group .. "#" .. ic
+	local mode_highlight = MODE_HIGHLIGHTS[vim.api.nvim_get_mode().mode]
+	if not mode_highlight then
+		mode_highlight = "YASOtherMode"
 	end
 
-	local git = ""
-	local ok_git, dict = pcall(vim.api.nvim_buf_get_var, 0, "gitsigns_status_dict")
-	if ok_git then
-		local added = dict.added and dict.added > 0 and ("%#YASGitAdded# " .. dict.added .. " ") or ""
-		local changed = dict.changed and dict.changed > 0 and ("%#YASGitChanged# " .. dict.changed .. " ") or ""
-		local removed = dict.removed and dict.removed > 0 and ("%#YASGitRemoved# " .. dict.removed .. " ") or ""
-		git = "%#YASGitBranch# " .. (dict.head or "") .. " " .. added .. changed .. removed
-	end
+	local file_name, extension = get_file_info()
+	local parts = {
+		"%#",
+		mode_highlight,
+		"# ",
+		get_file_icon(file_name, extension),
+		escape_statusline(file_name),
+		" ",
+		ALIGN_GIT,
+	}
 
-	local lsp = ""
-	for _, client in ipairs(vim.lsp.get_clients({ bufnr = 0 })) do
-		if client.name ~= "copilot" then
-			lsp = "%#YASLspStatus#  " .. client.name
-			break
-		end
-	end
+	append_git(parts)
+	parts[#parts + 1] = ALIGN_RIGHT
+	append_diagnostics(parts)
+	append_lsp(parts)
+	parts[#parts + 1] = " %l:%c "
 
-	local all_diags = vim.diagnostic.get(0)
-	local counts = { 0, 0, 0, 0 }
-	for _, d in ipairs(all_diags) do
-		local s = d.severity
-		if s then
-			counts[s] = (counts[s] or 0) + 1
-		end
-	end
-
-	local diags = ""
-	if counts[severity.ERROR] > 0 then
-		diags = diags .. "%#YASLspError# " .. counts[severity.ERROR] .. " "
-	end
-	if counts[severity.WARN] > 0 then
-		diags = diags .. "%#YASLspWarnings# " .. counts[severity.WARN] .. " "
-	end
-	if counts[severity.HINT] > 0 then
-		diags = diags .. "%#YASLspHints# " .. counts[severity.HINT] .. " "
-	end
-	if counts[severity.INFO] > 0 then
-		diags = diags .. "%#YASLspInfo# " .. counts[severity.INFO] .. " "
-	end
-
-	return "%#"
-		.. hl
-		.. "# "
-		.. icon
-		.. " "
-		.. file_name
-		.. " "
-		.. empty_space(1)
-		.. git
-		.. empty_space(20)
-		.. diags
-		.. lsp
-		.. " %l:%c "
-end
-
-local function update_statusline()
-	vim.o.laststatus = 3
-	vim.o.statusline = "%!v:lua.require('yetanotherline').build_statusline()"
+	return table.concat(parts)
 end
 
 M.setup = function()
-	setup_highlights()
-	update_statusline()
+	if not enabled then
+		previous_laststatus = vim.o.laststatus
+		previous_statusline = vim.o.statusline
+	end
+	enabled = true
 
-	augroup_id = vim.api.nvim_create_augroup(augroup_name, { clear = true })
+	refresh_highlights()
+	vim.o.laststatus = 3
+	vim.o.statusline = STATUSLINE
+	vim.wo.statusline = ""
 
+	augroup_id = vim.api.nvim_create_augroup(AUGROUP_NAME, { clear = true })
 	vim.api.nvim_create_autocmd({ "WinNew", "WinEnter", "BufWinEnter" }, {
 		group = augroup_id,
 		callback = function()
 			vim.wo.statusline = ""
-			vim.o.laststatus = 3
+			redraw_statusline()
 		end,
 	})
-
-	vim.api.nvim_create_autocmd({ "ModeChanged", "BufEnter", "WinEnter", "BufWritePost", "DiagnosticChanged" }, {
-		group = augroup_id,
-		callback = update_statusline,
-	})
-
+	vim.api.nvim_create_autocmd(
+		{ "ModeChanged", "BufEnter", "BufWritePost", "DiagnosticChanged", "LspAttach", "LspDetach" },
+		{
+			group = augroup_id,
+			callback = redraw_statusline,
+		}
+	)
 	vim.api.nvim_create_autocmd("ColorScheme", {
 		group = augroup_id,
-		callback = function()
-			setup_highlights()
-			update_statusline()
-		end,
+		callback = schedule_highlight_refresh,
 	})
 end
 
 M.disable = function()
-	if augroup_id then
-		vim.api.nvim_del_augroup_by_id(augroup_id)
-		augroup_id = nil
+	if not enabled then
+		return
 	end
-	vim.o.statusline = ""
-	vim.o.laststatus = 2
+	enabled = false
+
+	vim.api.nvim_del_augroup_by_id(augroup_id)
+	augroup_id = nil
+	vim.o.statusline = previous_statusline
+	vim.o.laststatus = previous_laststatus
 end
 
 return M
