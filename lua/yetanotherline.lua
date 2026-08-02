@@ -39,11 +39,14 @@ end
 
 local function setup_highlights()
 	sl_bg = get_statusline_bg()
-	icon_hl_cache = {}
 
 	local hl_colors = build_hl_colors(sl_bg)
 	for group, colors in pairs(hl_colors) do
 		vim.api.nvim_set_hl(0, group, { fg = colors.fg, bg = colors.bg })
+	end
+
+	for group, color in pairs(icon_hl_cache) do
+		vim.api.nvim_set_hl(0, group, { fg = color, bg = sl_bg, bold = true })
 	end
 end
 
@@ -81,9 +84,9 @@ M.build_statusline = function()
 		local ic, color = devicons.get_icon_color(file_name, file_ext, { default = true })
 		local hl_group = "YASFileIcon" .. file_ext
 
-		if not icon_hl_cache[file_ext] then
+		if icon_hl_cache[hl_group] ~= color then
 			vim.api.nvim_set_hl(0, hl_group, { fg = color, bg = sl_bg, bold = true })
-			icon_hl_cache[file_ext] = true
+			icon_hl_cache[hl_group] = color
 		end
 
 		icon = "%#" .. hl_group .. "#" .. ic
@@ -163,13 +166,10 @@ M.setup = function()
 		end,
 	})
 
-	vim.api.nvim_create_autocmd(
-		{ "ModeChanged", "BufEnter", "WinEnter", "BufWritePost", "DiagnosticChanged" },
-		{
-			group = augroup_id,
-			callback = update_statusline,
-		}
-	)
+	vim.api.nvim_create_autocmd({ "ModeChanged", "BufEnter", "WinEnter", "BufWritePost", "DiagnosticChanged" }, {
+		group = augroup_id,
+		callback = update_statusline,
+	})
 
 	vim.api.nvim_create_autocmd("ColorScheme", {
 		group = augroup_id,
